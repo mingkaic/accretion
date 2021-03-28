@@ -1,0 +1,7 @@
+
+# ------ ALL SETTINGS ------
+
+run --jobs=3 --copt=-DGRPC_BAZEL_BUILD
+build --jobs=3 --copt=-DGRPC_BAZEL_BUILD
+test --jobs=3 --copt=-DGRPC_BAZEL_BUILD
+coverage --jobs=3 --copt=-DGRPC_BAZEL_BUILD

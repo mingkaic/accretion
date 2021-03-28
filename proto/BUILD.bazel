@@ -1,0 +1,19 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_proto_grpc//cpp:defs.bzl", "cpp_grpc_library")
+
+proto_library(
+    name = "profile_pb",
+    srcs = ["profile.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_mingkaic_tenncor//internal/onnx:onnx_pb",
+        "@com_google_googleapis//:annotations_proto",
+    ],
+)
+
+cpp_grpc_library(
+    name = "profile_cc_grpc",
+    deps = [":profile_pb"],
+    copts = ["-std=c++17"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@bazel_gazelle//:def.bzl", "gazelle")
+
+# gazelle:exclude proto
+# gazelle:prefix github.com/mingkaic/accretion
+gazelle(name = "gazelle")
+
+go_binary(
+    name = "accretion",
+    data = ["//db:schema"],
+    embed = [":accretion_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "accretion_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/mingkaic/accretion",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//api",
+        "@com_github_sirupsen_logrus//:logrus",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

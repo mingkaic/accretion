@@ -1,0 +1,49 @@
+licenses(["notice"])
+
+load("@com_github_mingkaic_tenncor//third_party:tools/pybind.bzl", "pybind_py_library")
+
+filegroup(
+    name = "srcs",
+    srcs = [
+        "BUILD.bazel",
+        ":profile_hdrs",
+        ":profile_srcs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "profile_hdrs",
+    srcs = glob(["*.hpp"]),
+)
+
+filegroup(
+    name = "profile_srcs",
+    srcs = glob(["src/*.cpp"]),
+)
+
+######### LIBRARY #########
+
+cc_library(
+    name = "profile",
+    srcs = [":profile_srcs"],
+    hdrs = [":profile_hdrs"],
+    copts = ["-std=c++17"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//proto:profile_cc_grpc",
+        "@com_github_mingkaic_cppkg//egrpc",
+        "@com_github_mingkaic_tenncor//tenncor",
+    ],
+)
+
+pybind_py_library(
+    name = "profile_py",
+    cc_deps = [
+        ":profile",
+        "@com_github_mingkaic_tenncor//tenncor",
+    ],
+    cc_srcs = ["profile.cpp"],
+    copts = ["-std=c++17"],
+    visibility = ["//visibility:public"],
+)

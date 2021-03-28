@@ -1,0 +1,11 @@
+# Define Types
+
+type TenncorNode {
+    id
+    args
+}
+
+# Define Directives and index
+
+id: string @index(exact) .
+args: [string] . # defines node -> node edge

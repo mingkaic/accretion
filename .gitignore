@@ -1,0 +1,90 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Avoid intermediate representation files
+*.ll
+
+# System Files
+.*
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+Desktop.ini
+
+# Any databases
+*.db
+
+# Any generated data files
+*.svg
+*.info
+
+# Compiled Python files
+**/__pycache__
+*.pyc
+
+# Application specific files
+venv
+node_modules
+*.log
+*.gexf
+
+# Application specific folder structure
+bin/
+build/
+cmake-build-*/
+shareds/
+bazel-*
+docs/
+tmp/
+
+**/*.csv
+**/*.onnx
+
+CMakeFiles
+**/samples
+
+**/lex.yy.c
+**/y.tab.*
+
+html/
+
+tags
+compile_commands.json
+
+# whitelist
+!.gitignore
+!.gitattributes
+!.travis.yml
+!.dockerignore
+!.gitmodules
+!.astylerc
+!.bazelrc
+!models/*.onnx
+!models/**/*.onnx
+!.bazelignore
+!go.mod

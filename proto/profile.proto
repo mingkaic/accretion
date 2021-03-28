@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package tenncor_profile;
+
+option go_package = "github.com/mingkaic/accretion/proto";
+
+import "internal/onnx/onnx.proto";
+import "google/api/annotations.proto";
+
+message ListProfileRequest {
+}
+
+message ListProfileResponse {
+}
+
+message CreateProfileRequest {
+	onnx.ModelProto model = 1;
+
+	map<string,uint64> runtime = 2;
+}
+
+message CreateProfileResponse {}
+
+service TenncorProfileService  {
+	rpc ListProfile (ListProfileRequest) returns (ListProfileResponse) {
+        option (google.api.http) = {
+            get: "/v1/profiles"
+        };
+    }
+
+	rpc CreateProfile (CreateProfileRequest) returns (CreateProfileResponse);
+}
+
+option optimize_for = LITE_RUNTIME;

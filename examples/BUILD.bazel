@@ -1,0 +1,11 @@
+py_binary(
+    name = "profile_mlp_grad",
+    srcs = [
+        "profile_mlp_grad.py",
+    ],
+    data = ["@com_github_mingkaic_tenncor//cfg:optimizations"],
+    deps = [
+        "//client/profile:profile_py",
+        "@com_github_mingkaic_tenncor//tenncor:tenncor_py",
+    ],
+)
