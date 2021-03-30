@@ -18,7 +18,8 @@ GOOGLE_API := github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis
 ONNX_PROTO := proto/internal/onnx/onnx.proto
 ANNOTATIONS_PROTO := proto/google/api/annotations.proto
 
-proto/profile.pb.go: ${ONNX_PROTO} ${ANNOTATIONS_PROTO}
+.PHONY: protos
+protos: ${ONNX_PROTO} ${ANNOTATIONS_PROTO}
 	cd proto && buf generate
 
 ${ONNX_PROTO}:
@@ -34,4 +35,5 @@ ${ANNOTATIONS_PROTO}:
 clean:
 	rm -rf proto/internal
 	rm -rf proto/google
-	rm proto/*.go
+	rm proto/profile/*.go
+	rm proto/storage/*.go

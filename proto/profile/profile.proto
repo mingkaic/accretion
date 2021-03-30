@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tenncor_profile;
 
-option go_package = "github.com/mingkaic/accretion/proto";
+option go_package = "github.com/mingkaic/accretion/proto/profile";
 
 import "internal/onnx/onnx.proto";
 import "google/api/annotations.proto";
@@ -13,10 +13,21 @@ message ListProfileRequest {
 message ListProfileResponse {
 }
 
+message FuncInfo {
+    oneof data {
+        onnx.TensorProto dense_data = 1;
+
+        onnx.SparseTensorProto sparse_data = 2;
+    };
+
+    uint64 runtime = 3;
+}
+
 message CreateProfileRequest {
 	onnx.ModelProto model = 1;
 
-	map<string,uint64> runtime = 2;
+    // operator data are not captured in model
+    map<string,FuncInfo> operator_data = 2;
 }
 
 message CreateProfileResponse {}

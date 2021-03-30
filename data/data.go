@@ -5,33 +5,26 @@ import (
 )
 
 type (
-	Leaf struct {
+	TenncorNode struct {
 		Id          string      `json:"id"`
+		Label       string      `json:"label"`
+		Shape       []uint64    `json:"shape"`
+		Runtime     uint64      `json:"runtime",omitempty`
 		Annotations []string    `json:"-"`
-		Label       string      `json:"-"`
-		Shape       []uint64    `json:"-"`
+		Args        []string    `json:"-"`
 		Data        []float64   `json:"-"`
 		Sinfo       *SparseInfo `json:"-"`
 	}
 
-	Func struct {
-		Id          string   `json:"id"`
-		Args        []string `json:"args"`
-		Annotations []string `json:"-"`
-		Opname      string   `json:"-"`
-		Runtime     uint64   `json:"-"`
+	Annotation struct {
+		Id    string `json:"aid"`
+		Key   string `json:"key"`
+		Value string `json:"val"`
 	}
 
 	SparseInfo struct {
-		NonZeros     int     `json:"-"`
 		Indices      []int32 `json:"-"`
 		OuterIndices []int64 `json:"-"`
-	}
-
-	Annotation struct {
-		Id    string `json:"-"`
-		Key   string `json:"-"`
-		Value string `json:"-"`
 	}
 )
 
@@ -46,12 +39,8 @@ func NewAnnotation(key, val string) *Annotation {
 	}
 }
 
-func (l *Leaf) ToString() string {
-	return l.Id
-}
-
-func (f *Func) ToString() string {
-	return f.Id
+func (tn *TenncorNode) ToString() string {
+	return tn.Id
 }
 
 func (a *Annotation) ToString() string {

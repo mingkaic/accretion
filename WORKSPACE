@@ -7,8 +7,12 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 git_repository(
     name = "com_github_mingkaic_tenncor",
-    commit = "800cada2df5127befe16c5b4f4fecc83801d3da9",
+    commit = "fe0bd48916e1b1a80be3d24fe032cd62c2b35c45",
     remote = "https://gitlab.com/mingkaic/tenncor.git",
+)
+local_repository(
+    name = "com_github_mingkaic_tenncor",
+    path = "/home/mingkaichen/Developer/tenncor",
 )
 
 load("@com_github_mingkaic_tenncor//third_party:all.bzl", tenncor_deps = "dependencies")

@@ -7,7 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
-	"github.com/mingkaic/accretion/proto"
+	"github.com/mingkaic/accretion/proto/profile"
 	"github.com/mingkaic/accretion/service"
 )
 
@@ -17,35 +17,35 @@ type (
 	}
 
 	accretionAPI struct {
-		server proto.TenncorProfileServiceServer
+		server profile.TenncorProfileServiceServer
 	}
 
 	tenncorProfileServiceServer struct {
-		proto.UnimplementedTenncorProfileServiceServer
+		profile.UnimplementedTenncorProfileServiceServer
 	}
 )
 
-func NewTenncorProfileService() proto.TenncorProfileServiceServer {
+func NewTenncorProfileService() profile.TenncorProfileServiceServer {
 	return &tenncorProfileServiceServer{}
 }
 
 func (tenncorProfileServiceServer) ListProfile(
-	ctx context.Context, req *proto.ListProfileRequest) (
-	*proto.ListProfileResponse, error) {
-	return &proto.ListProfileResponse{}, nil
+	ctx context.Context, req *profile.ListProfileRequest) (
+	*profile.ListProfileResponse, error) {
+	return &profile.ListProfileResponse{}, nil
 }
 
 func (tenncorProfileServiceServer) CreateProfile(
-	ctx context.Context, req *proto.CreateProfileRequest) (
-	*proto.CreateProfileResponse, error) {
+	ctx context.Context, req *profile.CreateProfileRequest) (
+	*profile.CreateProfileResponse, error) {
 	log.Debug("creating profile")
 	svc := service.NewGraphService()
-	if err := svc.CreateGraphProfile(req.Model, req.Runtime); err != nil {
+	if err := svc.CreateGraphProfile(req.Model, req.OperatorData); err != nil {
 		log.Debugf("failed profile creation: %v", err)
 		return nil, err
 	}
 	log.Debug("created profile")
-	return &proto.CreateProfileResponse{}, nil
+	return &profile.CreateProfileResponse{}, nil
 }
 
 func NewAccretionAPI() AccretionAPI {
@@ -61,7 +61,7 @@ func (a *accretionAPI) Run(addr string, opts []grpc.ServerOption) error {
 		return err
 	}
 	grpcServer := grpc.NewServer(opts...)
-	proto.RegisterTenncorProfileServiceServer(grpcServer, a.server)
+	profile.RegisterTenncorProfileServiceServer(grpcServer, a.server)
 	grpcServer.Serve(listener)
 	return nil
 }

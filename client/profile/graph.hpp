@@ -2,7 +2,7 @@
 
 #include "tenncor/serial.hpp"
 
-#include "proto/profile.grpc.pb.h"
+#include "proto/profile/profile.grpc.pb.h"
 
 #include "client/profile/device.hpp"
 

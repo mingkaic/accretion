@@ -34,13 +34,39 @@ void remote_profile (const std::string& addr, eteq::ETensorsT roots)
 
     auto gen = global::get_generator();
     onnx::TensptrIdT ids;
-    auto rt = req.mutable_runtime();
+    auto op_data = req.mutable_operator_data();
     for (auto stat : device.stats_)
     {
         auto key = stat.first;
         auto val = stat.second;
         auto uuid = gen->get_str();
-        rt->insert({uuid, (uint64_t) val});
+
+        tenncor_profile::FuncInfo finfo;
+		teq::Shape shape = key->shape();
+		auto shapel = shape.to_list();
+        serial::marshal_tensor(
+        [&finfo,uuid,shapel]() -> onnx::TensorProto*
+        {
+            auto pb_tens = finfo.mutable_dense_data();
+            pb_tens->set_name(uuid);
+            google::protobuf::RepeatedField<int64_t> slist(
+                shapel.begin(), shapel.end());
+            pb_tens->mutable_dims()->Swap(&slist);
+            return pb_tens;
+        },
+        [&finfo,uuid,shapel]() -> onnx::SparseTensorProto*
+        {
+            auto pb_stens = finfo.mutable_sparse_data();
+            auto pb_tens = pb_stens->mutable_values();
+            pb_tens->set_name(uuid);
+            google::protobuf::RepeatedField<int64_t> slist(
+                shapel.begin(), shapel.end());
+            pb_tens->mutable_dims()->Swap(&slist);
+            return pb_stens;
+        }, *key);
+        finfo.set_runtime((uint64_t) val);
+
+        op_data->insert({uuid, finfo});
         ids.insert({owners.at(key), uuid});
     }
     tcr::save_model(*pb_model, roots, ids);

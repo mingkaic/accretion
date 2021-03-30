@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/dgraph-io/dgo/v200 v200.0.0-20210308191403-7844be8b0a6a
+	github.com/golang/protobuf v1.5.1 // indirect
 	github.com/mingkaic/onnx_go v0.0.0-20210326054732-1b1a0cea9b3c
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.8.0

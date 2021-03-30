@@ -4,114 +4,159 @@ import (
 	"fmt"
 	"sync"
 
-	pb "github.com/mingkaic/onnx_go/onnx"
+	"github.com/mingkaic/accretion/proto/profile"
+	"github.com/mingkaic/onnx_go/onnx"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/mingkaic/accretion/data"
+    "github.com/mingkaic/accretion/proto/storage"
 )
 
 type (
 	GraphService interface {
-		CreateGraphProfile(*pb.ModelProto, map[string]uint64) error
+		CreateGraphProfile(*onnx.ModelProto, map[string]*profile.FuncInfo) error
 	}
 
 	graphService struct{}
+
+	nodeEdge struct{
+		from string
+		to string
+		index int
+	}
 )
 
-const batchsize = 5
+const batchsize = 8
 
 func NewGraphService() GraphService {
 	return &graphService{}
 }
 
 func (graphService) CreateGraphProfile(
-	model *pb.ModelProto, runtimes map[string]uint64) error {
+	model *onnx.ModelProto, opData map[string]*profile.FuncInfo) error {
 	pbGraph := model.GetGraph()
 	graph, annotations, err := transformGraph(pbGraph)
 	if err != nil {
 		return err
 	}
-	annotationList := make([]*data.Annotation, 0, len(annotations))
+	annotationList := make([]interface{}, 0, len(annotations))
 	for _, annotation := range annotations {
 		annotationList = append(annotationList, annotation)
 	}
 	nodes := make([]interface{}, 0, len(graph))
+	edges := make([]interface{}, 0)
+	annotationConns := make([]interface{}, 0)
 	for id, node := range graph {
-		if runtime, ok := runtimes[id]; ok {
-			if fnc, ok := node.(*data.Func); ok {
-				fnc.Runtime = runtime
+		if op, ok := opData[id]; ok {
+			node.Runtime = op.GetRuntime()
+			if denseData := op.GetDenseData(); denseData != nil {
+				if variable, err := transformVariable(denseData); err != nil {
+					node.Shape = variable.Shape
+					node.Data = variable.Data
+				}
+			} else if sparseData := op.GetSparseData(); sparseData != nil {
+				if variable, err := transformSVariable(sparseData); err != nil {
+					node.Shape = variable.Shape
+					node.Data = variable.Data
+					node.Sinfo = variable.Sinfo
+				}
 			}
 		}
 		nodes = append(nodes, node)
+		for i, arg := range node.Args {
+			dst := &map[string]interface{}{
+				"id": arg,
+			}
+			edges = append(edges, &map[string]interface{}{
+				"id": id,
+				"uses": dst,
+				fmt.Sprintf("uses_%d", i): dst,
+			})
+		}
+		for _, ann := range node.Annotations {
+			annotationConns = append(annotationConns, &map[string]interface{}{
+				"id": id,
+				"annotates": &map[string]interface{}{
+					"aid": ann,
+				},
+			})
+		}
 	}
-	return data.WithTx(func(tx data.Txn) (err error) {
-		//log.Debug("saving annotations")
-		//if err = data.CreateNode(tx, annotationList); err != nil {
-		//return
-		//}
-		nnodes := len(nodes)
-		nbatches := nnodes / batchsize
-		log.Debugf("saving graph nodes %d", nnodes)
-		log.Debugf("saving by %d batches", nbatches)
+	return data.WithTx(func(tx *data.Txn) (err error) {
 		var (
 			wg      sync.WaitGroup
+			blobWg      sync.WaitGroup
 			errChan = make(chan error, 0)
 		)
-		for i := 0; i < nbatches; i++ {
-			startIdx := i * batchsize
-			data.AsyncCreateNode(&wg, errChan, fmt.Sprintf("%d", i), tx, nodes[startIdx:startIdx+batchsize])
-		}
-		if nbatches*batchsize < nnodes {
-			data.AsyncCreateNode(&wg, errChan, fmt.Sprintf("%d", nbatches+1), tx, nodes[nbatches*batchsize:])
-		}
 		go func() {
 			for err = range errChan {
 				log.Error(err)
 			}
 		}()
+		// saving blob
+		log.Debug("saving node blob")
+		for id, node := range graph {
+			blob := &storage.BlobStorage{
+				Data: node.Data,
+			}
+			if node.Sinfo != nil {
+				blob.Indices = node.Sinfo.Indices
+				blob.OuterIndices = node.Sinfo.OuterIndices
+			}
+			data.AsyncSaveBlob(&blobWg, errChan, id, blob)
+		}
+		log.Debug("saving annotations")
+		data.BatchCreateNodes(&wg, errChan, tx, annotationList, batchsize)
+		log.Debug("saving graph nodes")
+		data.BatchCreateNodes(&wg, errChan, tx, nodes, batchsize)
 		wg.Wait()
+		log.Debug("saving annotation edges")
+		data.BatchCreateNodes(&wg, errChan, tx, annotationConns, batchsize)
+		log.Debug("saving edges")
+		data.BatchCreateNodes(&wg, errChan, tx, edges, batchsize)
+		wg.Wait()
+		blobWg.Wait()
 		return
 	})
 }
 
-func transformGraph(graph *pb.GraphProto) (map[string]interface{}, map[string]*data.Annotation, error) {
+func transformGraph(graph *onnx.GraphProto) (map[string]*data.TenncorNode, map[string]*data.Annotation, error) {
 	var (
 		err  error
-		leaf *data.Leaf
-		fnc  *data.Func
+		node *data.TenncorNode
 
 		inputs = graph.GetInput()
 		inits  = graph.GetInitializer()
 		sinits = graph.GetSparseInitializer()
 		funcs  = graph.GetNode()
 
-		nodes                        = make(map[string]interface{})
+		nodes                        = make(map[string]*data.TenncorNode)
 		annotationEdges, annotations = getAnnotations(graph.GetQuantizationAnnotation())
 	)
 	for _, input := range inputs {
 		id := input.GetName()
-		leaf = transformPlaceholder(input)
-		leaf.Annotations = annotationEdges[id]
-		nodes[id] = leaf
+		node = transformPlaceholder(input)
+		node.Annotations = annotationEdges[id]
+		nodes[id] = node
 	}
 	for _, init := range inits {
 		id := init.GetName()
-		if leaf, err = transformVariable(init); err != nil {
+		if node, err = transformVariable(init); err != nil {
 			return nil, nil, err
 		}
-		leaf.Annotations = annotationEdges[id]
-		nodes[id] = leaf
+		node.Annotations = annotationEdges[id]
+		nodes[id] = node
 	}
 	for _, sinit := range sinits {
 		id := sinit.GetValues().GetName()
-		if leaf, err = transformSVariable(sinit); err != nil {
+		if node, err = transformSVariable(sinit); err != nil {
 			return nil, nil, err
 		}
-		leaf.Annotations = annotationEdges[id]
-		nodes[id] = leaf
+		node.Annotations = annotationEdges[id]
+		nodes[id] = node
 	}
-	for _, pbfnc := range funcs {
-		if subgraph, ok := getSubgraph(pbfnc); ok {
+	for _, pbFnc := range funcs {
+		if subgraph, ok := getSubgraph(pbFnc); ok {
 			subNodes, subAnnotations, err := transformGraph(subgraph)
 			if err != nil {
 				return nil, nil, err
@@ -123,17 +168,17 @@ func transformGraph(graph *pb.GraphProto) (map[string]interface{}, map[string]*d
 				annotations[k] = v
 			}
 		} else {
-			id := pbfnc.GetName()
-			if fnc, err = transformFunc(pbfnc, nodes, annotations); err != nil {
+			id := pbFnc.GetName()
+			if node, err = transformFunc(pbFnc, nodes, annotations); err != nil {
 				return nil, nil, err
 			}
-			nodes[id] = fnc
+			nodes[id] = node
 		}
 	}
 	return nodes, annotations, nil
 }
 
-func getAnnotations(qAnnotations []*pb.TensorAnnotation) (map[string][]string, map[string]*data.Annotation) {
+func getAnnotations(qAnnotations []*onnx.TensorAnnotation) (map[string][]string, map[string]*data.Annotation) {
 	var (
 		edge        []string
 		edges       = make(map[string][]string)
@@ -153,39 +198,39 @@ func getAnnotations(qAnnotations []*pb.TensorAnnotation) (map[string][]string, m
 	return edges, annotations
 }
 
-func transformPlaceholder(input *pb.ValueInfoProto) *data.Leaf {
-	return &data.Leaf{
+func transformPlaceholder(input *onnx.ValueInfoProto) *data.TenncorNode {
+	return &data.TenncorNode{
 		Id: input.GetName(),
 	}
 }
 
-func transformVariable(init *pb.TensorProto) (*data.Leaf, error) {
+func transformVariable(init *onnx.TensorProto) (*data.TenncorNode, error) {
 	var (
 		tensordata []float64
-		dtype      = pb.TensorProto_DataType(init.GetDataType())
+		dtype      = onnx.TensorProto_DataType(init.GetDataType())
 	)
 	switch dtype {
-	case pb.TensorProto_DOUBLE:
+	case onnx.TensorProto_DOUBLE:
 		tensordata = init.GetDoubleData()
-	case pb.TensorProto_FLOAT:
+	case onnx.TensorProto_FLOAT:
 		fdata := init.GetFloatData()
 		tensordata = make([]float64, 0, len(fdata))
 		for _, f := range fdata {
 			tensordata = append(tensordata, float64(f))
 		}
-	case pb.TensorProto_INT32, pb.TensorProto_UINT8, pb.TensorProto_UINT16, pb.TensorProto_INT16:
+	case onnx.TensorProto_INT32, onnx.TensorProto_UINT8, onnx.TensorProto_UINT16, onnx.TensorProto_INT16:
 		idata := init.GetInt32Data()
 		tensordata = make([]float64, 0, len(idata))
 		for _, i := range idata {
 			tensordata = append(tensordata, float64(i))
 		}
-	case pb.TensorProto_UINT32, pb.TensorProto_UINT64:
+	case onnx.TensorProto_UINT32, onnx.TensorProto_UINT64:
 		udata := init.GetUint64Data()
 		tensordata = make([]float64, 0, len(udata))
 		for _, u := range udata {
 			tensordata = append(tensordata, float64(u))
 		}
-	case pb.TensorProto_INT64:
+	case onnx.TensorProto_INT64:
 		idata := init.GetInt64Data()
 		tensordata = make([]float64, 0, len(idata))
 		for _, i := range idata {
@@ -200,14 +245,14 @@ func transformVariable(init *pb.TensorProto) (*data.Leaf, error) {
 	for i, d := range ds {
 		dims[i] = uint64(d)
 	}
-	return &data.Leaf{
+	return &data.TenncorNode{
 		Id:    init.GetName(),
 		Data:  tensordata,
 		Shape: dims,
 	}, nil
 }
 
-func transformSVariable(init *pb.SparseTensorProto) (*data.Leaf, error) {
+func transformSVariable(init *onnx.SparseTensorProto) (*data.TenncorNode, error) {
 	leaf, err := transformVariable(init.GetValues())
 	if err != nil {
 		return nil, err
@@ -215,17 +260,16 @@ func transformSVariable(init *pb.SparseTensorProto) (*data.Leaf, error) {
 	inners := init.GetIndices().GetInt32Data()
 	outers := init.GetDims()
 	leaf.Sinfo = &data.SparseInfo{
-		NonZeros:     len(inners),
 		Indices:      inners,
 		OuterIndices: outers,
 	}
 	return leaf, nil
 }
 
-func transformFunc(fnc *pb.NodeProto, nodes map[string]interface{}, annotations map[string]*data.Annotation) (*data.Func, error) {
+func transformFunc(fnc *onnx.NodeProto, nodes map[string]*data.TenncorNode, annotations map[string]*data.Annotation) (*data.TenncorNode, error) {
 	var (
 		val   interface{}
-		atype pb.AttributeProto_AttributeType
+		atype onnx.AttributeProto_AttributeType
 
 		id     = fnc.GetName()
 		attrs  = fnc.GetAttribute()
@@ -236,33 +280,33 @@ func transformFunc(fnc *pb.NodeProto, nodes map[string]interface{}, annotations 
 	for i, attr := range attrs {
 		atype = attr.GetType()
 		switch atype {
-		case pb.AttributeProto_FLOAT:
+		case onnx.AttributeProto_FLOAT:
 			val = attr.GetF()
-		case pb.AttributeProto_INT:
+		case onnx.AttributeProto_INT:
 			val = attr.GetI()
-		case pb.AttributeProto_STRING:
+		case onnx.AttributeProto_STRING:
 			val = attr.GetS()
-		case pb.AttributeProto_FLOATS:
+		case onnx.AttributeProto_FLOATS:
 			val = attr.GetFloats()
-		case pb.AttributeProto_INTS:
+		case onnx.AttributeProto_INTS:
 			val = attr.GetInts()
-		case pb.AttributeProto_STRINGS:
+		case onnx.AttributeProto_STRINGS:
 			val = attr.GetStrings()
-		case pb.AttributeProto_TENSOR:
+		case onnx.AttributeProto_TENSOR:
 			val = nodes[attr.GetT().GetName()]
-		case pb.AttributeProto_SPARSE_TENSOR:
+		case onnx.AttributeProto_SPARSE_TENSOR:
 			val = nodes[attr.GetSparseTensor().GetValues().GetName()]
-		case pb.AttributeProto_TENSORS:
-			pbtens := attr.GetTensors()
-			tens := make([]interface{}, len(pbtens))
-			for j, tensor := range pbtens {
+		case onnx.AttributeProto_TENSORS:
+			pbTens := attr.GetTensors()
+			tens := make([]interface{}, len(pbTens))
+			for j, tensor := range pbTens {
 				tens[j] = nodes[tensor.GetName()]
 			}
 			val = tens
-		case pb.AttributeProto_SPARSE_TENSORS:
-			pbtens := attr.GetSparseTensors()
-			tens := make([]interface{}, len(pbtens))
-			for j, tensor := range pbtens {
+		case onnx.AttributeProto_SPARSE_TENSORS:
+			pbTens := attr.GetSparseTensors()
+			tens := make([]interface{}, len(pbTens))
+			for j, tensor := range pbTens {
 				tens[j] = nodes[tensor.GetValues().GetName()]
 			}
 			val = tens
@@ -276,20 +320,20 @@ func transformFunc(fnc *pb.NodeProto, nodes map[string]interface{}, annotations 
 	inputs := fnc.GetInput()
 	args := make([]string, len(inputs))
 	for i, input := range inputs {
-		args[i] = fmt.Sprint(nodes[input])
+		args[i] = input
 	}
-	return &data.Func{
+	return &data.TenncorNode{
 		Id:          id,
-		Opname:      opname,
+		Label:       opname,
 		Args:        args,
 		Annotations: annotationEdges,
 	}, nil
 }
 
-func getSubgraph(fnc *pb.NodeProto) (*pb.GraphProto, bool) {
+func getSubgraph(fnc *onnx.NodeProto) (*onnx.GraphProto, bool) {
 	attrs := fnc.GetAttribute()
 	for _, attr := range attrs {
-		if attr.GetType() == pb.AttributeProto_GRAPH {
+		if attr.GetType() == onnx.AttributeProto_GRAPH {
 			return attr.GetG(), true
 		}
 	}

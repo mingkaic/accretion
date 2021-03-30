@@ -43,7 +43,47 @@ func init() {
 		if err := dg.Alter(ctx, op); err != nil {
 			log.Fatal(err)
 		}
+
+        initBlob()
 	})
+}
+
+func CreateNode(tx *Txn, node interface{}) error {
+	mu := &api.Mutation{}
+	pb, err := json.Marshal(node)
+	if err != nil {
+		return err
+	}
+	mu.SetJson = pb
+	_, err = tx.Mutate(mu)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func AsyncCreateNode(wg *sync.WaitGroup, errChan chan error, id string, tx *Txn, node interface{}) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := CreateNode(tx, node)
+		if err != nil {
+			errChan <- fmt.Errorf("Job %s failed: %+v", id, err)
+		}
+	}()
+}
+
+func BatchCreateNodes(wg *sync.WaitGroup, errChan chan error, tx *Txn, nodes []interface{}, batchsize int) {
+	nnodes := len(nodes)
+	nbatches := nnodes / batchsize
+	log.Debugf("saving nodes %d by %d batches", nnodes, nbatches)
+	for i := 0; i < nbatches; i++ {
+		startIdx := i * batchsize
+		AsyncCreateNode(wg, errChan, fmt.Sprintf("%d", i), tx, nodes[startIdx:startIdx+batchsize])
+	}
+	if nbatches*batchsize < nnodes {
+		AsyncCreateNode(wg, errChan, fmt.Sprintf("%d", nbatches+1), tx, nodes[nbatches*batchsize:])
+	}
 }
 
 func getDgraphClient() (*dgo.Dgraph, func()) {
@@ -77,30 +117,4 @@ func getDgraphClient() (*dgo.Dgraph, func()) {
 			log.Infof("Error while closing connection:%v", err)
 		}
 	}
-}
-
-func CreateNode(tx Txn, node interface{}) error {
-	mu := &api.Mutation{}
-	pb, err := json.Marshal(node)
-	if err != nil {
-		return err
-	}
-	log.Debugf("creating dgraph node with %s", pb[:50])
-	mu.SetJson = pb
-	_, err = tx.Mutate(mu)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func AsyncCreateNode(wg *sync.WaitGroup, errChan chan error, id string, tx Txn, node interface{}) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err := CreateNode(tx, node)
-		if err != nil {
-			errChan <- fmt.Errorf("Job %s failed: %+v", id, err)
-		}
-	}()
 }

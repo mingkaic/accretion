@@ -3,7 +3,7 @@ load("@rules_proto_grpc//cpp:defs.bzl", "cpp_grpc_library")
 
 proto_library(
     name = "profile_pb",
-    srcs = ["profile.proto"],
+    srcs = ["profile/profile.proto"],
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_mingkaic_tenncor//internal/onnx:onnx_pb",

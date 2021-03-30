@@ -75,6 +75,7 @@ html/
 
 tags
 compile_commands.json
+blobs/
 
 # whitelist
 !.gitignore

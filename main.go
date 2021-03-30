@@ -26,7 +26,7 @@ func main() {
 	log.Infof("Serving on %s", addr)
 
 	var opts []grpc.ServerOption
-	opts = append(opts, grpc.MaxRecvMsgSize(1024*1024*32)) // 32MB
+	opts = append(opts, grpc.MaxRecvMsgSize(1024*1024*64)) // 32MB
 	app := api.NewAccretionAPI()
 	if err := app.Run(addr, opts); err != nil {
 		log.Fatal(err)

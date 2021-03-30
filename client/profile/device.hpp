@@ -22,7 +22,7 @@ struct ProfilerDevice final : public teq::iDevice
 
 	void calc (teq::iTensor& tens, size_t cache_ttl) override
 	{
-		TIME(dev_->calc(tens, cache_ttl));
+		TIME(dev_->calc(tens, cache_ttl + 1));
 		stats_.emplace(&tens, stat);
 	}
 

@@ -2,10 +2,24 @@
 
 type TenncorNode {
     id
-    args
+    label
+    shape
+    runtime
+}
+
+type Annotations {
+    aid
+    key
+    val
 }
 
 # Define Directives and index
 
 id: string @index(exact) .
-args: [string] . # defines node -> node edge
+label: string .
+shape: [int] .
+runtime: int .
+
+aid: string @index(exact) .
+key: string .
+val: string .
