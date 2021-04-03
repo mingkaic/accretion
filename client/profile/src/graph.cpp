@@ -71,10 +71,13 @@ void remote_profile (const std::string& addr, eteq::ETensorsT roots)
     }
     tcr::save_model(*pb_model, roots, ids);
 
-    grpc::Status status = client.create_profile(req);
+    tenncor_profile::CreateProfileResponse res;
+    grpc::Status status = client.create_profile(req, res);
     if (status.ok())
     {
-        global::infof("successfully created profile in `%s`", addr.c_str());
+        auto id = res.profile_id();
+        global::infof("successfully created profile %s in `%s`",
+            id.c_str(), addr.c_str());
     }
     else
     {

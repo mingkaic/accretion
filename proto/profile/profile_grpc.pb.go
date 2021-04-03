@@ -19,6 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TenncorProfileServiceClient interface {
 	ListProfile(ctx context.Context, in *ListProfileRequest, opts ...grpc.CallOption) (*ListProfileResponse, error)
+	GetProfile(ctx context.Context, in *GetProfileRequest, opts ...grpc.CallOption) (*GetProfileResponse, error)
 	CreateProfile(ctx context.Context, in *CreateProfileRequest, opts ...grpc.CallOption) (*CreateProfileResponse, error)
 }
 
@@ -39,6 +40,15 @@ func (c *tenncorProfileServiceClient) ListProfile(ctx context.Context, in *ListP
 	return out, nil
 }
 
+func (c *tenncorProfileServiceClient) GetProfile(ctx context.Context, in *GetProfileRequest, opts ...grpc.CallOption) (*GetProfileResponse, error) {
+	out := new(GetProfileResponse)
+	err := c.cc.Invoke(ctx, "/tenncor_profile.TenncorProfileService/GetProfile", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *tenncorProfileServiceClient) CreateProfile(ctx context.Context, in *CreateProfileRequest, opts ...grpc.CallOption) (*CreateProfileResponse, error) {
 	out := new(CreateProfileResponse)
 	err := c.cc.Invoke(ctx, "/tenncor_profile.TenncorProfileService/CreateProfile", in, out, opts...)
@@ -53,6 +63,7 @@ func (c *tenncorProfileServiceClient) CreateProfile(ctx context.Context, in *Cre
 // for forward compatibility
 type TenncorProfileServiceServer interface {
 	ListProfile(context.Context, *ListProfileRequest) (*ListProfileResponse, error)
+	GetProfile(context.Context, *GetProfileRequest) (*GetProfileResponse, error)
 	CreateProfile(context.Context, *CreateProfileRequest) (*CreateProfileResponse, error)
 	mustEmbedUnimplementedTenncorProfileServiceServer()
 }
@@ -63,6 +74,9 @@ type UnimplementedTenncorProfileServiceServer struct {
 
 func (UnimplementedTenncorProfileServiceServer) ListProfile(context.Context, *ListProfileRequest) (*ListProfileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListProfile not implemented")
+}
+func (UnimplementedTenncorProfileServiceServer) GetProfile(context.Context, *GetProfileRequest) (*GetProfileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProfile not implemented")
 }
 func (UnimplementedTenncorProfileServiceServer) CreateProfile(context.Context, *CreateProfileRequest) (*CreateProfileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateProfile not implemented")
@@ -98,6 +112,24 @@ func _TenncorProfileService_ListProfile_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenncorProfileService_GetProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenncorProfileServiceServer).GetProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tenncor_profile.TenncorProfileService/GetProfile",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenncorProfileServiceServer).GetProfile(ctx, req.(*GetProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _TenncorProfileService_CreateProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateProfileRequest)
 	if err := dec(in); err != nil {
@@ -126,6 +158,10 @@ var TenncorProfileService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListProfile",
 			Handler:    _TenncorProfileService_ListProfile_Handler,
+		},
+		{
+			MethodName: "GetProfile",
+			Handler:    _TenncorProfileService_GetProfile_Handler,
 		},
 		{
 			MethodName: "CreateProfile",

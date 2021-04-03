@@ -11,6 +11,38 @@ message ListProfileRequest {
 }
 
 message ListProfileResponse {
+    repeated string profiles = 1;
+}
+
+message SigmaNode {
+    string id = 1;
+
+    string label = 2;
+
+    int64 x = 3;
+
+    int64 y = 4;
+
+    int64 size = 5;
+}
+
+message SigmaEdge {
+    string id = 1;
+
+    string source = 2;
+
+    string target = 3;
+}
+
+message GetProfileRequest {
+    string profile_id = 1;
+}
+
+// reply in the form of a sigma graph data
+message GetProfileResponse {
+    repeated SigmaNode nodes = 1;
+
+    repeated SigmaEdge edges = 2;
 }
 
 message FuncInfo {
@@ -30,12 +62,20 @@ message CreateProfileRequest {
     map<string,FuncInfo> operator_data = 2;
 }
 
-message CreateProfileResponse {}
+message CreateProfileResponse {
+    string profile_id = 1;
+}
 
 service TenncorProfileService  {
 	rpc ListProfile (ListProfileRequest) returns (ListProfileResponse) {
         option (google.api.http) = {
             get: "/v1/profiles"
+        };
+    }
+
+	rpc GetProfile (GetProfileRequest) returns (GetProfileResponse) {
+        option (google.api.http) = {
+            get: "/v1/profile/{profile_id}"
         };
     }
 

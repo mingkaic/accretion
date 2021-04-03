@@ -44,8 +44,16 @@ func init() {
 			log.Fatal(err)
 		}
 
-        initBlob()
+		initBlob()
 	})
+}
+
+func QueryNode(tx *Txn, q string) ([]byte, error) {
+	res, err := tx.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	return res.GetJson(), nil
 }
 
 func CreateNode(tx *Txn, node interface{}) error {
@@ -82,6 +90,7 @@ func BatchCreateNodes(wg *sync.WaitGroup, errChan chan error, tx *Txn, nodes []i
 		AsyncCreateNode(wg, errChan, fmt.Sprintf("%d", i), tx, nodes[startIdx:startIdx+batchsize])
 	}
 	if nbatches*batchsize < nnodes {
+		log.Debug("saving remainder batch")
 		AsyncCreateNode(wg, errChan, fmt.Sprintf("%d", nbatches+1), tx, nodes[nbatches*batchsize:])
 	}
 }

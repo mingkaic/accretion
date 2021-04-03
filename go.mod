@@ -4,15 +4,15 @@ go 1.16
 
 require (
 	github.com/dgraph-io/dgo/v200 v200.0.0-20210308191403-7844be8b0a6a
-	github.com/golang/protobuf v1.5.1 // indirect
+	github.com/golang/protobuf v1.5.2
+	github.com/google/uuid v1.2.0
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.3.0
 	github.com/mingkaic/onnx_go v0.0.0-20210326054732-1b1a0cea9b3c
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.8.0
-	github.com/stretchr/testify v1.7.0 // indirect
-	golang.org/x/net v0.0.0-20210324051636-2c4c8ecb7826 // indirect
-	golang.org/x/sys v0.0.0-20210324051608-47abb6519492 // indirect
-	google.golang.org/genproto v0.0.0-20210325224202-eed09b1b5210
-	google.golang.org/grpc v1.36.0
+	github.com/zenazn/goji v1.0.1
+	golang.org/x/net v0.0.0-20210331212208-0fccb6fa2b5c // indirect
+	golang.org/x/text v0.3.6 // indirect
+	google.golang.org/genproto v0.0.0-20210330181207-2295ebbda0c6
+	google.golang.org/grpc v1.36.1
 	google.golang.org/protobuf v1.26.0
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

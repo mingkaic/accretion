@@ -36,6 +36,16 @@ func WithTx(txFn func(*Txn) error) (err error) {
 	return
 }
 
+func (tx *Txn) Query(q string) (*api.Response, error) {
+	transx := tx.client.NewTxn()
+	tx.txs = append(tx.txs, transx)
+	ctx := context.Background()
+	clientDeadline := time.Now().Add(time.Duration(500) * time.Second)
+	ctx, cancel := context.WithDeadline(ctx, clientDeadline)
+	defer cancel()
+	return transx.Query(ctx, q)
+}
+
 func (tx *Txn) Mutate(mu *api.Mutation) (*api.Response, error) {
 	tranx := tx.client.NewTxn()
 	tx.txs = append(tx.txs, tranx)

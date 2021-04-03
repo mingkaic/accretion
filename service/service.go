@@ -1,7 +1,10 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
+	"math"
 	"sync"
 
 	"github.com/mingkaic/accretion/proto/profile"
@@ -9,30 +12,138 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/mingkaic/accretion/data"
-    "github.com/mingkaic/accretion/proto/storage"
+	"github.com/mingkaic/accretion/proto/storage"
 )
 
 type (
 	GraphService interface {
-		CreateGraphProfile(*onnx.ModelProto, map[string]*profile.FuncInfo) error
+		ListGraphProfiles() ([]string, error)
+		GetGraphProfile(string) ([]*profile.SigmaNode, []*profile.SigmaEdge, error)
+		CreateGraphProfile(string, *onnx.ModelProto, map[string]*profile.FuncInfo) error
 	}
 
 	graphService struct{}
 
-	nodeEdge struct{
-		from string
-		to string
-		index int
+	ProfileGroupbyEntry struct {
+		ProfileId string `json:"profile_id"`
+		Count     int    `json:"count"`
+	}
+
+	ProfileGroupby struct {
+		GroupBy []*ProfileGroupbyEntry `json:"@groupby"`
+	}
+
+	ProfileNode struct {
+		Id, Label string
+		Arg       []struct {
+			Id string
+		}
 	}
 )
 
-const batchsize = 8
+const (
+	batchsize     = 8
+	profileLookup = `{
+	profiles(func:has(profile_id)) @groupby(profile_id) {
+		count(uid)
+	}
+}`
+	nodesLookupFmt = `{
+	nodes(func: allofterms(profile_id, "%s")) {
+		id
+		label
+		arg {
+			id
+		}
+	}
+}`
+)
 
 func NewGraphService() GraphService {
 	return &graphService{}
 }
 
-func (graphService) CreateGraphProfile(
+func (graphService) ListGraphProfiles() ([]string, error) {
+	var profiles []string
+	if err := data.WithTx(func(tx *data.Txn) (err error) {
+		var (
+			b        []byte
+			response = make(map[string][]*ProfileGroupby)
+		)
+		b, err = data.QueryNode(tx, profileLookup)
+		if err != nil {
+			return
+		}
+		if err = json.Unmarshal(b, &response); err != nil {
+			return
+		}
+		entries, ok := response["profiles"]
+		if !ok || len(entries) < 1 {
+			err = fmt.Errorf("invalid response from dgraph: %s", string(b))
+			return
+		}
+		profiles = make([]string, len(entries[0].GroupBy))
+		for i, profile := range entries[0].GroupBy {
+			profiles[i] = profile.ProfileId
+		}
+		return
+	}); err != nil {
+		return nil, err
+	}
+	return profiles, nil
+}
+
+func (graphService) GetGraphProfile(id string) ([]*profile.SigmaNode, []*profile.SigmaEdge, error) {
+	var (
+		nodes []*profile.SigmaNode
+		edges []*profile.SigmaEdge
+	)
+	if err := data.WithTx(func(tx *data.Txn) (err error) {
+		var (
+			b        []byte
+			response = make(map[string][]*ProfileNode)
+		)
+		b, err = data.QueryNode(tx, fmt.Sprintf(nodesLookupFmt, id))
+		if err != nil {
+			return
+		}
+		if err = json.Unmarshal(b, &response); err != nil {
+			return
+		}
+		profNodes, ok := response["nodes"]
+		if !ok {
+			err = fmt.Errorf("invalid response from dgraph: %s", string(b))
+			return
+		}
+		nodes = make([]*profile.SigmaNode, len(profNodes))
+		row := int(math.Sqrt(float64(len(nodes))))
+		for i, profNode := range profNodes {
+			nodes[i] = &profile.SigmaNode{
+				Id:    profNode.Id,
+				Label: profNode.Label,
+				X:     int64(i % row),
+				Y:     int64(i / row),
+				Size:  5,
+			}
+			if len(profNode.Arg) > 0 {
+				for _, arg := range profNode.Arg {
+					id := uuid.NewString()
+					edges = append(edges, &profile.SigmaEdge{
+						Id:     id,
+						Source: profNode.Id,
+						Target: arg.Id,
+					})
+				}
+			}
+		}
+		return
+	}); err != nil {
+		return nil, nil, err
+	}
+	return nodes, edges, nil
+}
+
+func (graphService) CreateGraphProfile(profileId string,
 	model *onnx.ModelProto, opData map[string]*profile.FuncInfo) error {
 	pbGraph := model.GetGraph()
 	graph, annotations, err := transformGraph(pbGraph)
@@ -43,10 +154,12 @@ func (graphService) CreateGraphProfile(
 	for _, annotation := range annotations {
 		annotationList = append(annotationList, annotation)
 	}
-	nodes := make([]interface{}, 0, len(graph))
-	edges := make([]interface{}, 0)
-	annotationConns := make([]interface{}, 0)
 	for id, node := range graph {
+		node.ProfileId = profileId
+		node.Args = make([]*data.TenncorNode, len(node.ArgIds))
+		for i, argId := range node.ArgIds {
+			node.Args[i] = graph[argId]
+		}
 		if op, ok := opData[id]; ok {
 			node.Runtime = op.GetRuntime()
 			if denseData := op.GetDenseData(); denseData != nil {
@@ -62,30 +175,16 @@ func (graphService) CreateGraphProfile(
 				}
 			}
 		}
-		nodes = append(nodes, node)
-		for i, arg := range node.Args {
-			dst := &map[string]interface{}{
-				"id": arg,
-			}
-			edges = append(edges, &map[string]interface{}{
-				"id": id,
-				"uses": dst,
-				fmt.Sprintf("uses_%d", i): dst,
-			})
-		}
-		for _, ann := range node.Annotations {
-			annotationConns = append(annotationConns, &map[string]interface{}{
-				"id": id,
-				"annotates": &map[string]interface{}{
-					"aid": ann,
-				},
-			})
-		}
+	}
+	outputs := pbGraph.GetOutput()
+	roots := make([]interface{}, len(outputs))
+	for i, output := range outputs {
+		roots[i] = graph[output.GetName()]
 	}
 	return data.WithTx(func(tx *data.Txn) (err error) {
 		var (
 			wg      sync.WaitGroup
-			blobWg      sync.WaitGroup
+			blobWg  sync.WaitGroup
 			errChan = make(chan error, 0)
 		)
 		go func() {
@@ -103,17 +202,10 @@ func (graphService) CreateGraphProfile(
 				blob.Indices = node.Sinfo.Indices
 				blob.OuterIndices = node.Sinfo.OuterIndices
 			}
-			data.AsyncSaveBlob(&blobWg, errChan, id, blob)
+			data.AsyncSaveBlob(&blobWg, errChan, profileId, id, blob)
 		}
-		log.Debug("saving annotations")
-		data.BatchCreateNodes(&wg, errChan, tx, annotationList, batchsize)
-		log.Debug("saving graph nodes")
-		data.BatchCreateNodes(&wg, errChan, tx, nodes, batchsize)
-		wg.Wait()
-		log.Debug("saving annotation edges")
-		data.BatchCreateNodes(&wg, errChan, tx, annotationConns, batchsize)
-		log.Debug("saving edges")
-		data.BatchCreateNodes(&wg, errChan, tx, edges, batchsize)
+		log.Debug("saving roots")
+		data.BatchCreateNodes(&wg, errChan, tx, roots, batchsize)
 		wg.Wait()
 		blobWg.Wait()
 		return
@@ -178,29 +270,31 @@ func transformGraph(graph *onnx.GraphProto) (map[string]*data.TenncorNode, map[s
 	return nodes, annotations, nil
 }
 
-func getAnnotations(qAnnotations []*onnx.TensorAnnotation) (map[string][]string, map[string]*data.Annotation) {
+func getAnnotations(qAnnotations []*onnx.TensorAnnotation) (map[string][]*data.Annotation, map[string]*data.Annotation) {
 	var (
-		edge        []string
-		edges       = make(map[string][]string)
+		edge        []*data.Annotation
+		edges       = make(map[string][]*data.Annotation)
 		annotations = make(map[string]*data.Annotation)
 	)
 	for _, qAnnotation := range qAnnotations {
 		id := qAnnotation.GetTensorName()
 		entries := qAnnotation.GetQuantParameterTensorNames()
-		edge = make([]string, len(entries))
+		edge = make([]*data.Annotation, len(entries))
 		edges[id] = edge
 		for i, entry := range entries {
 			annotation := data.NewAnnotation(entry.GetKey(), entry.GetValue())
 			annotations[annotation.Id] = annotation
-			edge[i] = annotation.Id
+			edge[i] = annotation
 		}
 	}
 	return edges, annotations
 }
 
 func transformPlaceholder(input *onnx.ValueInfoProto) *data.TenncorNode {
+	id := input.GetName()
 	return &data.TenncorNode{
-		Id: input.GetName(),
+		Uid: fmt.Sprintf("_:%s", id),
+		Id:  id,
 	}
 }
 
@@ -245,8 +339,10 @@ func transformVariable(init *onnx.TensorProto) (*data.TenncorNode, error) {
 	for i, d := range ds {
 		dims[i] = uint64(d)
 	}
+	id := init.GetName()
 	return &data.TenncorNode{
-		Id:    init.GetName(),
+		Uid:   fmt.Sprintf("_:%s", id),
+		Id:    id,
 		Data:  tensordata,
 		Shape: dims,
 	}, nil
@@ -275,7 +371,7 @@ func transformFunc(fnc *onnx.NodeProto, nodes map[string]*data.TenncorNode, anno
 		attrs  = fnc.GetAttribute()
 		opname = fnc.GetOpType()
 
-		annotationEdges = make([]string, len(attrs))
+		annotationEdges = make([]*data.Annotation, len(attrs))
 	)
 	for i, attr := range attrs {
 		atype = attr.GetType()
@@ -315,18 +411,19 @@ func transformFunc(fnc *onnx.NodeProto, nodes map[string]*data.TenncorNode, anno
 		}
 		annotation := data.NewAnnotation(attr.GetName(), fmt.Sprint(val))
 		annotations[annotation.Id] = annotation
-		annotationEdges[i] = annotation.Id
+		annotationEdges[i] = annotation
 	}
 	inputs := fnc.GetInput()
-	args := make([]string, len(inputs))
+	argIds := make([]string, len(inputs))
 	for i, input := range inputs {
-		args[i] = input
+		argIds[i] = input
 	}
 	return &data.TenncorNode{
+		Uid:         fmt.Sprintf("_:%s", id),
 		Id:          id,
 		Label:       opname,
-		Args:        args,
 		Annotations: annotationEdges,
+		ArgIds:      argIds,
 	}, nil
 }
 

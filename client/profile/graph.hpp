@@ -21,9 +21,9 @@ struct TenncorProfileClient final : public egrpc::GrpcClient
 		egrpc::ClientConfig cfg) : GrpcClient(cfg),
 		stub_(tenncor_profile::TenncorProfileService::NewStub(channel)) {}
 
-	grpc::Status create_profile (const tenncor_profile::CreateProfileRequest& req)
+	grpc::Status create_profile (const tenncor_profile::CreateProfileRequest& req,
+        tenncor_profile::CreateProfileResponse& res)
 	{
-		tenncor_profile::CreateProfileResponse res;
 		grpc::ClientContext ctx;
 		build_ctx(ctx, true);
 		return stub_->CreateProfile(&ctx, req, &res);

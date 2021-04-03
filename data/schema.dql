@@ -1,25 +1,29 @@
-# Define Types
-
-type TenncorNode {
-    id
-    label
-    shape
-    runtime
-}
-
-type Annotations {
-    aid
-    key
-    val
-}
-
 # Define Directives and index
 
 id: string @index(exact) .
 label: string .
 shape: [int] .
 runtime: int .
+profile_id: string @index(exact, term) .
+arg: [uid] .
+attr: [uid] .
 
-aid: string @index(exact) .
 key: string .
 val: string .
+
+# Define Types
+
+type TenncorNode {
+    id: string
+    label: string
+    shape: [int]
+    runtime: int
+    profile_id: string
+    arg: [TenncorNode]
+    attr: [Annotations]
+}
+
+type Annotations {
+    key: string
+    val: string
+}
